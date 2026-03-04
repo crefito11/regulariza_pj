@@ -28,7 +28,8 @@ use Src\Service\LoteCnpjService;
     <h2>Consulta de CNPJs em Lote</h2>
 
     <form method="post" enctype="multipart/form-data">
-        <input type="file" name="planilha" accept=".xlsx,.xls,.csv" required>
+        <input type="text" name="descricao" placeholder="Nome relatório" required><br><br>
+        <input type="file" name="planilha" id="file" accept=".xlsx,.xls,.csv" required><br><br>
         <button type="submit">Processar</button>
     </form>
 
@@ -45,14 +46,18 @@ use Src\Service\LoteCnpjService;
 
     <?php
 
+    date_default_timezone_set("America/Sao_Paulo");
+
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (isset($_FILES['planilha']) && $_FILES['planilha']['error'] === 0) {
 
             $caminhoTemp = $_FILES['planilha']['tmp_name'];
+            $nome_relatorio = $_POST['descricao'] ?? 'Relatório Empresas ' . date("d-m-Y His");
 
             $service = new LoteCnpjService();
-            $resultados = $service->processarPlanilha($caminhoTemp);
+            $resultados = $service->processarPlanilha($caminhoTemp, $nome_relatorio);
+
 
             echo "<h3>Resultados:</h3>";
             echo "<pre>";
@@ -62,7 +67,15 @@ use Src\Service\LoteCnpjService;
     }
 
     ?>
+    <script>
+        const input_file = document.getElementById("file");
+        const progress_bar = document.getElementById("progress-bar");
 
+        input_file.addEventListener('change', () => {
+            progress_bar.style.width = "0%";
+            progress_bar.innerHTML = "0%";
+        });
+    </script>
 </body>
 
 </html>
