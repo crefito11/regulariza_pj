@@ -2,8 +2,8 @@
 
 namespace Src\Service;
 
-use Empresa;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use Src\Entity\Empresa as EntityEmpresa;
 use Src\Entity\Log;
 use Src\Entity\Relatorio;
 
@@ -12,6 +12,7 @@ class LoteCnpjService
     private MinhaReceitaAPI $api;
     private RelatorioService $relatorioService;
     private LogService $logService;
+    private EmpresaService $empresaService;
     private array $resultados = [];
 
     public function __construct()
@@ -19,6 +20,7 @@ class LoteCnpjService
         $this->api = new MinhaReceitaAPI();
         $this->relatorioService = new RelatorioService();
         $this->logService = new LogService();
+        $this->empresaService = new EmpresaService();
     }
 
     private function atualizarProgresso(int $atual, int $total): void
@@ -51,89 +53,184 @@ class LoteCnpjService
         );
     }
 
-    public function processarPlanilha(string $caminhoArquivo, string $nome_relatorio): array
+    private function extrairCnpjsValidos($sheet): array
     {
-        $spreadsheet = IOFactory::load($caminhoArquivo);
-        $sheet = $spreadsheet->getActiveSheet();
+        $cnpjs = [];
 
-        $linhasValidas = [];
-
-        // 🔎 Primeiro: coletar apenas CNPJs válidos
         foreach ($sheet->getRowIterator() as $row) {
-
             $linha = $row->getRowIndex();
 
             if ($linha === 1) {
                 continue;
             }
 
-            $valor = (string) ($sheet->getCell('A' . $linha)->getValue() ?? '');
+            $valor = (string) ($sheet->getCell('A'.$linha)->getValue() ?? '');
             $cnpj = preg_replace('/\D/', '', trim($valor));
 
-            if ($cnpj !== '' && strlen($cnpj) === 14) {
-                $linhasValidas[] = $cnpj;
+            if (strlen($cnpj) === 14) {
+                $cnpjs[] = $cnpj;
             }
         }
 
-        $total = count($linhasValidas);
+        return $cnpjs;
+    }
+
+    private function montarEndereco(array $dados): ?string
+    {
+        $logradouro = $dados['logradouro'] ?? null;
+        $numero = $dados['numero'] ?? null;
+        $complemento = $dados['complemento'] ?? null;
+        $municipio = $dados['municipio'] ?? null;
+        $bairro = $dados['bairro'] ?? null;
+        $cep = $dados['cep'] ?? null;
+
+        $partes = [];
+
+        // Logradouro + número
+        if ($logradouro) {
+            $endereco = $logradouro;
+
+            if ($numero) {
+                $endereco .= ' '.$numero;
+            }
+
+            $partes[] = $endereco;
+        }
+
+        // Complemento
+        if ($complemento) {
+            $partes[] = $complemento;
+        }
+
+        // Cidade - bairro
+        if ($municipio || $bairro) {
+            $cidadeBairro = trim(($municipio ?? '').' - '.($bairro ?? ''), ' -');
+            $partes[] = $cidadeBairro;
+        }
+
+        // CEP
+        if ($cep) {
+            $partes[] = 'CEP: '.$cep;
+        }
+
+        return !empty($partes) ? implode(', ', $partes) : null;
+    }
+
+    private function isSluOuEi(array $dados): bool
+    {
+        $natureza = $dados['codigo_natureza_juridica'] ?? null;
+        $qsa = $dados['qsa'] ?? [];
+
+        // Empresário Individual
+        if ($natureza == '2135') {
+            return true;
+        }
+
+        // Sociedade Limitada Unipessoal (SLU)
+        if ($natureza == '2062' && count($qsa) <= 1) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function criarEmpresaAPartirApi(array $dados): EntityEmpresa
+    {
+        $empresa = new EntityEmpresa();
+
+        $empresa->cnpj = $this->formatarCnpj($dados['cnpj']);
+        $empresa->razao_social = $dados['razao_social'];
+        $empresa->nome_fantasia = $dados['nome_fantasia'] ?? null;
+        $empresa->natureza_juridica = $dados['natureza_juridica'] ?? null;
+        $empresa->slu_ei = $this->isSluOuEi($dados);
+        $empresa->atividade = $dados['cnae_fiscal_descricao'] ?? null;
+        $empresa->cnae_principal = $dados['cnae_fiscal'] ?? null;
+        $empresa->inscricao_estadual = null;
+        $empresa->endereco = $this->montarEndereco($dados);
+        $empresa->cidade = $dados['municipio'] ?? null;
+        $empresa->email = $dados['email'] ?? null;
+        $empresa->telefone = $dados['ddd_telefone_1'] ?? null;
+        $empresa->uf = $dados['uf'] ?? null;
+        $empresa->situacao_cadastral = $dados['descricao_situacao_cadastral'] ?? null;
+        $empresa->descricao_matriz_filial = $dados['descricao_identificador_matriz_filial'] ?? null;
+
+        return $empresa;
+    }
+
+    private function registrarFalha(int $idRelatorio, string $mensagem): void
+    {
+        $log = new Log();
+        $log->id_relatorio = $idRelatorio;
+        $log->mensagem = $mensagem;
+
+        $this->logService->criar($log);
+    }
+
+    private function finalizarRelatorio(int $idRelatorio, int $processados, int $falhas): void
+    {
+        $relatorio = $this->relatorioService->buscarPorId($idRelatorio);
+
+        $relatorio->qtdItemsProcessados = $processados;
+        $relatorio->qtdFalhas = $falhas;
+
+        $this->relatorioService->atualizar($relatorio);
+    }
+
+    public function processarPlanilha(string $caminhoArquivo, string $nome_relatorio): array
+    {
+        $spreadsheet = IOFactory::load($caminhoArquivo);
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $cnpjs = $this->extrairCnpjsValidos($sheet);
+
+        $total = count($cnpjs);
         $contador = 0;
         $falhas = 0;
 
-        // Iniciar relatorio
+        // Criar relatório
         $relatorio = new Relatorio();
         $relatorio->nome = $nome_relatorio;
-        $relatorio->qtdItemsProcessados = $contador;
-        $relatorio->qtdFalhas = $falhas;
-        $id_relatorio = $this->relatorioService->criar(relatorio: $relatorio);
+        $relatorio->qtdItemsProcessados = 0;
+        $relatorio->qtdFalhas = 0;
 
-        // 🚀 Agora processa apenas os válidos
-        foreach ($linhasValidas as $cnpj) {
+        $idRelatorio = $this->relatorioService->criar($relatorio);
 
+        foreach ($cnpjs as $cnpj) {
             $dados = $this->api->consultarCnpj($cnpj);
 
-            if (!$dados) continue;
+            if (!$dados) {
+                continue;
+            }
 
             if (!empty($dados['message'])) {
-                $log = new Log();
-                $log->id_relatorio = $id_relatorio;
-                $log->mensagem = $dados['message'];
-                $this->logService->criar($log);
-                $falhas++;
-            }/*  else {
-                $empresa = new Empresa();
-                $empresa->cnpj = $dados['cnpj'];
-                $empresa->razao_social = $dados['razao_social'];
-                $empresa->nome_fantasia = $dados['nome_fantasia'] ?? null;
-                $empresa->natureza_juridica = $dados['natureza_juridica'];
-                $empresa->slu_ei = false;
-                $empresa->atividade = $dados['atividade_principal'][0]['text'] ?? '';
-                $empresa->cnae_principal = $dados['atividade_principal'][0]['code'] ?? '';
-                $empresa->inscricao_estadual = '';
-                $empresa->endereco = $dados['logradouro'] . ', ' . $dados['numero'];
-                $empresa->cidade = $dados['municipio'];
-                $empresa->email = $dados['email'] ?? '';
-                $empresa->telefone = $dados['telefone'] ?? '';
-                $empresa->uf = $dados['uf'];
-                $empresa->situacao_cadastral = $dados['situacao'];
-                $empresa->descricao_matriz_filial = $dados['tipo'];
-            } */
+                $this->registrarFalha($idRelatorio, $dados['message']);
+                ++$falhas;
+            } else {
+                $empresa = $this->criarEmpresaAPartirApi($dados);
+                $this->empresaService->salvarOuAtualizar($empresa);
+            }
 
-            $contador++;
+            ++$contador;
 
             $this->atualizarProgresso($contador, $total);
 
             sleep(5);
+
+            // a cada 10 itens, aguarda 1 minuto
+            if ($contador % 10 === 0) {
+                echo "Aguardando 60 segundos para evitar bloqueio da API...\n";
+                sleep(60);
+            }
         }
 
-        $obRelatorio = $this->relatorioService->buscarPorId($id_relatorio);
-        $this->relatorioService->atualizar($obRelatorio);
+        $this->finalizarRelatorio($idRelatorio, $contador, $falhas);
 
-        $this->resultados[] = [
-            'processados' => $contador,
-            'falhas' => $falhas,
-            'dados' => $dados
+        return [
+            [
+                'total' => $total,
+                'processados' => $contador,
+                'falhas' => $falhas,
+            ],
         ];
-
-        return $this->resultados;
     }
 }

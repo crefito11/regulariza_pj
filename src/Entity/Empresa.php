@@ -1,21 +1,23 @@
 <?php
 
+namespace Src\Entity;
+
 class Empresa
 {
     public ?int $id = null;
-    public string $cnpj;
-    public string $razao_social;
-    public string $nome_fantasia;
-    public string $natureza_juridica;
-    public bool $slu_ei;
-    public string $atividade;
-    public string $cnae_principal;
-    public string $inscricao_estadual;
-    public string $endereco;
-    public string $cidade;
-    public string $email;
-    public string $telefone;
-    public string $uf;
-    public string $situacao_cadastral;
-    public string $descricao_matriz_filial;
+    public $cnpj;
+    public $razao_social;
+    public $nome_fantasia;
+    public $natureza_juridica;
+    public $slu_ei;
+    public $atividade;
+    public $cnae_principal;
+    public $inscricao_estadual;
+    public $endereco;
+    public $cidade;
+    public $email;
+    public $telefone;
+    public $uf;
+    public $situacao_cadastral;
+    public $descricao_matriz_filial;
 }
