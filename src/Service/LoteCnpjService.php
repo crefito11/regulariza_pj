@@ -195,19 +195,35 @@ class LoteCnpjService
 
         $idRelatorio = $this->relatorioService->criar($relatorio);
 
+        $consultasApi = 0;
+
         foreach ($cnpjs as $cnpj) {
+            $existe = $this->empresaService->buscarPorCnpj($this->formatarCnpj($cnpj));
+
+            if ($existe) {
+                echo "[{$contador}/{$total}] CNPJ {$cnpj} já existe na base. Pulando...<br>";
+                ++$contador;
+                $this->atualizarProgresso($contador, $total);
+                continue;
+            }
+
             $dados = $this->api->consultarCnpj($cnpj);
+            ++$consultasApi;
 
             if (!$dados) {
+                echo "[{$contador}/{$total}] Falha ao consultar CNPJ {$cnpj} <br>";
+                ++$contador;
                 continue;
             }
 
             if (!empty($dados['message'])) {
+                echo "[{$contador}/{$total}] Erro na API para {$cnpj}: {$dados['message']} <br>";
                 $this->registrarFalha($idRelatorio, $dados['message']);
                 ++$falhas;
             } else {
+                echo "[{$contador}/{$total}] CNPJ {$cnpj} consultado com sucesso. <br>";
                 $empresa = $this->criarEmpresaAPartirApi($dados);
-                $this->empresaService->salvarOuAtualizar($empresa);
+                $this->empresaService->criar($empresa);
             }
 
             ++$contador;
@@ -216,9 +232,9 @@ class LoteCnpjService
 
             sleep(5);
 
-            // a cada 10 itens, aguarda 1 minuto
-            if ($contador % 10 === 0) {
-                echo "Aguardando 60 segundos para evitar bloqueio da API...\n";
+            // pausa baseada nas consultas reais à API
+            if ($consultasApi % 10 === 0) {
+                echo 'Aguardando 60 segundos para evitar bloqueio da API...<br>';
                 sleep(60);
             }
         }
