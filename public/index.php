@@ -10,7 +10,7 @@ ini_set('zlib.output_compression', false);
 header('Cache-Control: no-cache');
 header('Content-Type: text/html; charset=utf-8');
 
-require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__.'/../vendor/autoload.php';
 
 use Src\Service\LoteCnpjService;
 
@@ -46,27 +46,24 @@ use Src\Service\LoteCnpjService;
 
     <?php
 
-    date_default_timezone_set("America/Sao_Paulo");
+    date_default_timezone_set('America/Sao_Paulo');
 
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_FILES['planilha']) && $_FILES['planilha']['error'] === 0) {
+        $caminhoTemp = $_FILES['planilha']['tmp_name'];
+        $nome_relatorio = $_POST['descricao'] ?? 'Relatório Empresas '.date('d-m-Y His');
 
-        if (isset($_FILES['planilha']) && $_FILES['planilha']['error'] === 0) {
+        $service = new LoteCnpjService();
+        $resultados = $service->processarPlanilha($caminhoTemp, $nome_relatorio);
 
-            $caminhoTemp = $_FILES['planilha']['tmp_name'];
-            $nome_relatorio = $_POST['descricao'] ?? 'Relatório Empresas ' . date("d-m-Y His");
-
-            $service = new LoteCnpjService();
-            $resultados = $service->processarPlanilha($caminhoTemp, $nome_relatorio);
-
-
-            echo "<h3>Resultados:</h3>";
-            echo "<pre>";
-            print_r($resultados);
-            echo "</pre>";
-        }
+        echo '<h3>Resultados:</h3>';
+        echo '<pre>';
+        print_r($resultados);
+        echo '</pre>';
     }
+}
 
-    ?>
+?>
     <script>
         const input_file = document.getElementById("file");
         const progress_bar = document.getElementById("progress-bar");
