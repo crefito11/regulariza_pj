@@ -20,4 +20,5 @@ class Empresa
     public $uf;
     public $situacao_cadastral;
     public $descricao_matriz_filial;
+    public $id_dados_crefito;
 }
