@@ -20,12 +20,12 @@ class EmpresaService
             cnpj, razao_social, nome_fantasia, natureza_juridica,
             slu_ei, atividade, cnae_principal, inscricao_estadual,
             endereco, cidade, email, telefone, uf,
-            situacao_cadastral, descricao_matriz_filial
+            situacao_cadastral, descricao_matriz_filial, id_dados_crefito
         ) VALUES (
             :cnpj, :razao_social, :nome_fantasia, :natureza_juridica,
             :slu_ei, :atividade, :cnae_principal, :inscricao_estadual,
             :endereco, :cidade, :email, :telefone, :uf,
-            :situacao_cadastral, :descricao_matriz_filial
+            :situacao_cadastral, :descricao_matriz_filial, :id_dados_crefito
         )';
 
         $stmt = $this->conn->prepare($sql);
@@ -50,7 +50,8 @@ class EmpresaService
             telefone = :telefone,
             uf = :uf,
             situacao_cadastral = :situacao_cadastral,
-            descricao_matriz_filial = :descricao_matriz_filial
+            descricao_matriz_filial = :descricao_matriz_filial,
+            id_dados_crefito = :id_dados_crefito
         WHERE cnpj = :cnpj';
 
         $stmt = $this->conn->prepare($sql);
@@ -69,6 +70,17 @@ class EmpresaService
         return $resultado ?: null;
     }
 
+    public function buscarPorCnpjOb(string $cnpj): ?Empresa
+    {
+        $sql = 'SELECT * FROM empresa WHERE cnpj = :cnpj';
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute(['cnpj' => $cnpj]);
+
+        $resultado = $stmt->fetchObject(Empresa::class);
+
+        return $resultado ?: null;
+    }
+
     public function buscarPorId(int $id): ?array
     {
         $sql = 'SELECT * FROM empresa WHERE id = :id';
@@ -76,6 +88,17 @@ class EmpresaService
         $stmt->execute(['id' => $id]);
 
         $resultado = $stmt->fetch();
+
+        return $resultado ?: null;
+    }
+
+    public function listaBaixadas(): ?array
+    {
+        $sql = 'SELECT * FROM vw_empresas_baixadas';
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute();
+
+        $resultado = $stmt->fetchAll();
 
         return $resultado ?: null;
     }
@@ -98,6 +121,20 @@ class EmpresaService
         }
     }
 
+    public function atualizarIdDadosCrefito(string $cnpj, int $id): bool
+    {
+        $sql = 'UPDATE empresa 
+                SET id_dados_crefito = :id 
+                WHERE cnpj = :cnpj';
+
+        $stmt = $this->conn->prepare($sql);
+
+        return $stmt->execute([
+            'id' => $id,
+            'cnpj' => $cnpj,
+        ]);
+    }
+
     private function mapearParametros(Empresa $empresa): array
     {
         return [
@@ -116,6 +153,7 @@ class EmpresaService
             'uf' => $empresa->uf,
             'situacao_cadastral' => $empresa->situacao_cadastral,
             'descricao_matriz_filial' => $empresa->descricao_matriz_filial,
+            'id_dados_crefito' => $empresa->id_dados_crefito ?? null,
         ];
     }
 }
