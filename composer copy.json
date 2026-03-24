@@ -1,0 +1,10 @@
+{   "name":"crefito/regulariza_pj",
+    "autoload":{
+        "psr-4": {
+        "Src\\":"src/"
+        }
+    },
+    "require": {
+        "phpoffice/phpspreadsheet": "^5.4"
+    }
+}
